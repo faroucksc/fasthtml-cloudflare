@@ -1,0 +1,22 @@
+[project]
+name = "fasthtml-cloudflare"
+version = "0.1.0"
+description = "FastHTML on Cloudflare Workers — reference template"
+requires-python = ">=3.12"
+dependencies = [
+    "python-fasthtml",
+    "fastlite",
+]
+
+[dependency-groups]
+dev = [
+    "workers-py",
+    "workers-runtime-sdk",
+]
+
+# CRITICAL: strip uvicorn[standard] → uvicorn (pure Python)
+# httptools has no Wasm wheel; uvicorn falls back to h11 automatically
+[tool.uv]
+override-dependencies = [
+    "uvicorn>=0.30",
+]

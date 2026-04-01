@@ -1,0 +1,13 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "fasthtml-app",
+	"main": "src/worker.py",
+	"compatibility_date": "2026-03-27",
+	"compatibility_flags": [
+		"python_workers",
+		"python_dedicated_snapshot"
+	],
+	"observability": {
+		"enabled": true
+	}
+}

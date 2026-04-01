@@ -1,0 +1,8 @@
+.venv/
+.venv-workers/
+python_modules/
+node_modules/
+__pycache__/
+*.pyc
+.wrangler/
+uv.lock
