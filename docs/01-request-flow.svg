@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" font-family="system-ui, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#e67e22"/>
+    </marker>
+  </defs>
+  
+  <style>
+    .title { font-size: 20px; font-weight: 700; fill: #222; }
+    .subtitle { font-size: 13px; fill: #888; }
+    .label { font-size: 14px; fill: #333; font-weight: 600; }
+    .desc { font-size: 11.5px; fill: #666; }
+    .step { font-size: 12px; fill: #fff; font-weight: 700; }
+    .stepnum { font-size: 11px; fill: #e67e22; font-weight: 700; }
+  </style>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" class="title">How a Request Flows Through the Stack</text>
+  <text x="450" y="55" text-anchor="middle" class="subtitle">User visits /acme → sees their todo list</text>
+
+  <!-- Step 1: Browser -->
+  <rect x="30" y="90" width="150" height="80" rx="12" fill="#f0f4ff" stroke="#4a90d9" stroke-width="2"/>
+  <text x="105" y="120" text-anchor="middle" class="label">🖥️ Browser</text>
+  <text x="105" y="140" text-anchor="middle" class="desc">User types URL</text>
+  <text x="105" y="155" text-anchor="middle" class="desc">/acme</text>
+  
+  <!-- Arrow 1 -->
+  <line x1="180" y1="130" x2="245" y2="130" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <circle cx="212" cy="115" r="11" fill="#e67e22"/>
+  <text x="212" y="119" text-anchor="middle" class="step">1</text>
+
+  <!-- Step 2: Cloudflare Edge -->
+  <rect x="250" y="80" width="180" height="100" rx="12" fill="#fff8f0" stroke="#e67e22" stroke-width="2"/>
+  <text x="340" y="108" text-anchor="middle" class="label">⚡ Cloudflare Edge</text>
+  <text x="340" y="126" text-anchor="middle" class="desc">Nearest data center</text>
+  <text x="340" y="142" text-anchor="middle" class="desc">(330+ cities worldwide)</text>
+  <text x="340" y="162" text-anchor="middle" class="desc">Picks up the request</text>
+
+  <!-- Arrow 2 -->
+  <line x1="430" y1="130" x2="495" y2="130" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <circle cx="462" cy="115" r="11" fill="#e67e22"/>
+  <text x="462" y="119" text-anchor="middle" class="step">2</text>
+
+  <!-- Step 3: FastHTML Worker -->
+  <rect x="500" y="80" width="180" height="100" rx="12" fill="#f0fff4" stroke="#27ae60" stroke-width="2"/>
+  <text x="590" y="108" text-anchor="middle" class="label">🐍 FastHTML Worker</text>
+  <text x="590" y="126" text-anchor="middle" class="desc">Sees /acme in URL</text>
+  <text x="590" y="142" text-anchor="middle" class="desc">Asks: "give me the DO</text>
+  <text x="590" y="158" text-anchor="middle" class="desc">named tenant:acme"</text>
+
+  <!-- Arrow 3 (down to DO) -->
+  <line x1="590" y1="180" x2="590" y2="245" stroke="#e67e22" stroke-width="2.5" marker-end="url(#arrow-orange)" stroke-dasharray="6,3"/>
+  <circle cx="575" cy="212" r="11" fill="#e67e22"/>
+  <text x="575" y="216" text-anchor="middle" class="step">3</text>
+  <text x="620" y="218" class="stepnum">RPC call</text>
+
+  <!-- Step 4: Durable Object -->
+  <rect x="460" y="250" width="260" height="130" rx="12" fill="#fff5f5" stroke="#c0392b" stroke-width="2"/>
+  <rect x="480" y="310" width="110" height="55" rx="8" fill="#ffeaa7" stroke="#d4a017" stroke-width="1.5"/>
+  
+  <text x="590" y="278" text-anchor="middle" class="label">🏠 Durable Object</text>
+  <text x="590" y="296" text-anchor="middle" class="desc">"tenant:acme" — one instance in the world</text>
+  
+  <text x="535" y="332" text-anchor="middle" class="label" font-size="12">📁 SQLite</text>
+  <text x="535" y="350" text-anchor="middle" class="desc">acme's private</text>
+  <text x="535" y="362" text-anchor="middle" class="desc">10GB database</text>
+
+  <!-- pydorm label -->
+  <rect x="610" y="318" width="90" height="40" rx="6" fill="#dfe6e9" stroke="#636e72" stroke-width="1"/>
+  <text x="655" y="338" text-anchor="middle" class="desc" font-weight="600">pydorm</text>
+  <text x="655" y="352" text-anchor="middle" class="desc">MiniDataAPI</text>
+
+  <!-- Arrow between pydorm and SQLite -->
+  <line x1="610" y1="340" x2="595" y2="340" stroke="#636e72" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Arrow 4 (DO reads SQLite) -->
+  <circle cx="540" cy="300" r="11" fill="#e67e22"/>
+  <text x="540" y="304" text-anchor="middle" class="step">4</text>
+
+  <!-- Arrow 5 (back up with data) -->
+  <path d="M 720 315 Q 780 315 780 200 Q 780 130 680 130" stroke="#27ae60" stroke-width="2" fill="none" marker-end="url(#arrow)" stroke-dasharray="6,3"/>
+  <circle cx="780" cy="240" r="11" fill="#e67e22"/>
+  <text x="780" y="244" text-anchor="middle" class="step">5</text>
+  <text x="810" y="244" class="stepnum" text-anchor="start">todos</text>
+
+  <!-- Arrow 6 (Worker builds HTML) -->
+  <rect x="250" y="250" width="180" height="100" rx="12" fill="#f5f0ff" stroke="#8e44ad" stroke-width="2"/>
+  <text x="340" y="278" text-anchor="middle" class="label">🎨 FT Components</text>
+  <text x="340" y="298" text-anchor="middle" class="desc">Titled("acme",</text>
+  <text x="340" y="314" text-anchor="middle" class="desc">  Ul(Li("✓ Deploy"),</text>
+  <text x="340" y="330" text-anchor="middle" class="desc">     Li("⬜ Feed horses")))</text>
+  <text x="340" y="346" text-anchor="middle" class="desc">→ HTML string</text>
+
+  <line x1="500" y1="145" x2="430" y2="275" stroke="#8e44ad" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6,3"/>
+  <circle cx="465" cy="210" r="11" fill="#e67e22"/>
+  <text x="465" y="214" text-anchor="middle" class="step">6</text>
+
+  <!-- Arrow 7 (HTML back to browser) -->
+  <line x1="250" y1="300" x2="155" y2="170" stroke="#4a90d9" stroke-width="2" marker-end="url(#arrow)" stroke-dasharray="6,3"/>
+  <circle cx="200" cy="238" r="11" fill="#e67e22"/>
+  <text x="200" y="242" text-anchor="middle" class="step">7</text>
+
+  <!-- Final: rendered page -->
+  <rect x="30" y="390" width="150" height="100" rx="12" fill="#f0f4ff" stroke="#4a90d9" stroke-width="2"/>
+  <text x="105" y="418" text-anchor="middle" class="label">🖥️ Browser</text>
+  <text x="105" y="438" text-anchor="middle" class="desc">Sees the page:</text>
+  <text x="105" y="456" text-anchor="middle" class="desc">✓ Deploy FastHTML</text>
+  <text x="105" y="472" text-anchor="middle" class="desc">⬜ Feed the horses</text>
+
+  <line x1="105" y1="170" x2="105" y2="385" stroke="#4a90d9" stroke-width="1.5" stroke-dasharray="4,4"/>
+
+  <!-- HTMX note -->
+  <rect x="250" y="410" width="220" height="70" rx="10" fill="#eafaf1" stroke="#27ae60" stroke-width="1.5"/>
+  <text x="360" y="435" text-anchor="middle" class="label" font-size="12">After this: HTMX takes over</text>
+  <text x="360" y="452" text-anchor="middle" class="desc">Add/toggle/delete send tiny</text>
+  <text x="360" y="466" text-anchor="middle" class="desc">requests — no full page reload</text>
+</svg>

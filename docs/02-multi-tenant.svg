@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500" font-family="system-ui, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#555"/>
+    </marker>
+    <marker id="arr-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#c0392b"/>
+    </marker>
+    <marker id="arr-b" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#2980b9"/>
+    </marker>
+    <marker id="arr-g" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#27ae60"/>
+    </marker>
+  </defs>
+
+  <style>
+    .title { font-size: 20px; font-weight: 700; fill: #222; }
+    .subtitle { font-size: 13px; fill: #888; }
+    .label { font-size: 14px; fill: #333; font-weight: 600; }
+    .desc { font-size: 11.5px; fill: #666; }
+    .tenant-name { font-size: 13px; font-weight: 700; }
+  </style>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" class="title">Multi-Tenant Isolation</text>
+  <text x="450" y="55" text-anchor="middle" class="subtitle">Each tenant gets their own Durable Object with private SQLite — completely isolated</text>
+
+  <!-- Three users -->
+  <rect x="30" y="100" width="120" height="60" rx="10" fill="#ffeaea" stroke="#c0392b" stroke-width="2"/>
+  <text x="90" y="128" text-anchor="middle" class="tenant-name" fill="#c0392b">👤 User A</text>
+  <text x="90" y="146" text-anchor="middle" class="desc">visits /acme</text>
+
+  <rect x="30" y="220" width="120" height="60" rx="10" fill="#eaf0ff" stroke="#2980b9" stroke-width="2"/>
+  <text x="90" y="248" text-anchor="middle" class="tenant-name" fill="#2980b9">👤 User B</text>
+  <text x="90" y="266" text-anchor="middle" class="desc">visits /berens</text>
+
+  <rect x="30" y="340" width="120" height="60" rx="10" fill="#eaffea" stroke="#27ae60" stroke-width="2"/>
+  <text x="90" y="368" text-anchor="middle" class="tenant-name" fill="#27ae60">👤 User C</text>
+  <text x="90" y="386" text-anchor="middle" class="desc">visits /client-47</text>
+
+  <!-- Arrows to Worker -->
+  <line x1="150" y1="130" x2="248" y2="200" stroke="#c0392b" stroke-width="2" marker-end="url(#arr-r)"/>
+  <line x1="150" y1="250" x2="248" y2="250" stroke="#2980b9" stroke-width="2" marker-end="url(#arr-b)"/>
+  <line x1="150" y1="370" x2="248" y2="300" stroke="#27ae60" stroke-width="2" marker-end="url(#arr-g)"/>
+
+  <!-- FastHTML Worker (single) -->
+  <rect x="250" y="180" width="170" height="140" rx="14" fill="#f8f8f8" stroke="#555" stroke-width="2.5"/>
+  <text x="335" y="210" text-anchor="middle" class="label">🐍 FastHTML Worker</text>
+  <text x="335" y="232" text-anchor="middle" class="desc">(the front desk)</text>
+  <line x1="270" y1="245" x2="400" y2="245" stroke="#ddd" stroke-width="1"/>
+  <text x="335" y="265" text-anchor="middle" class="desc">Reads the URL path</text>
+  <text x="335" y="282" text-anchor="middle" class="desc">Routes to the right</text>
+  <text x="335" y="299" text-anchor="middle" class="desc">Durable Object</text>
+
+  <!-- Arrows from Worker to DOs -->
+  <line x1="420" y1="210" x2="548" y2="120" stroke="#c0392b" stroke-width="2.5" marker-end="url(#arr-r)" stroke-dasharray="6,3"/>
+  <line x1="420" y1="250" x2="548" y2="250" stroke="#2980b9" stroke-width="2.5" marker-end="url(#arr-b)" stroke-dasharray="6,3"/>
+  <line x1="420" y1="290" x2="548" y2="380" stroke="#27ae60" stroke-width="2.5" marker-end="url(#arr-g)" stroke-dasharray="6,3"/>
+
+  <!-- DO 1: acme -->
+  <rect x="550" y="75" width="310" height="100" rx="12" fill="#fff5f5" stroke="#c0392b" stroke-width="2"/>
+  <text x="620" y="105" text-anchor="middle" class="tenant-name" fill="#c0392b">tenant:acme</text>
+  <text x="620" y="122" text-anchor="middle" class="desc">Durable Object</text>
+  
+  <rect x="710" y="88" width="130" height="70" rx="8" fill="#ffeaa7" stroke="#d4a017" stroke-width="1.5"/>
+  <text x="775" y="112" text-anchor="middle" class="label" font-size="12">📁 SQLite</text>
+  <text x="775" y="130" text-anchor="middle" class="desc">3 todos</text>
+  <text x="775" y="146" text-anchor="middle" class="desc">acme's data only</text>
+
+  <!-- DO 2: berens -->
+  <rect x="550" y="205" width="310" height="100" rx="12" fill="#f0f4ff" stroke="#2980b9" stroke-width="2"/>
+  <text x="620" y="235" text-anchor="middle" class="tenant-name" fill="#2980b9">tenant:berens</text>
+  <text x="620" y="252" text-anchor="middle" class="desc">Durable Object</text>
+  
+  <rect x="710" y="218" width="130" height="70" rx="8" fill="#ffeaa7" stroke="#d4a017" stroke-width="1.5"/>
+  <text x="775" y="242" text-anchor="middle" class="label" font-size="12">📁 SQLite</text>
+  <text x="775" y="260" text-anchor="middle" class="desc">12 todos</text>
+  <text x="775" y="276" text-anchor="middle" class="desc">berens' data only</text>
+
+  <!-- DO 3: client-47 -->
+  <rect x="550" y="335" width="310" height="100" rx="12" fill="#f0fff4" stroke="#27ae60" stroke-width="2"/>
+  <text x="620" y="365" text-anchor="middle" class="tenant-name" fill="#27ae60">tenant:client-47</text>
+  <text x="620" y="382" text-anchor="middle" class="desc">Durable Object</text>
+  
+  <rect x="710" y="348" width="130" height="70" rx="8" fill="#ffeaa7" stroke="#d4a017" stroke-width="1.5"/>
+  <text x="775" y="372" text-anchor="middle" class="label" font-size="12">📁 SQLite</text>
+  <text x="775" y="390" text-anchor="middle" class="desc">0 todos</text>
+  <text x="775" y="406" text-anchor="middle" class="desc">client-47's data only</text>
+
+  <!-- Isolation callout -->
+  <rect x="280" y="440" width="400" height="45" rx="10" fill="#fff3e0" stroke="#e67e22" stroke-width="1.5"/>
+  <text x="480" y="460" text-anchor="middle" class="label" font-size="13" fill="#e67e22">🔒 Each database is completely private</text>
+  <text x="480" y="476" text-anchor="middle" class="desc">acme can't see berens' data. Nobody shares. Up to 10GB each.</text>
+</svg>
