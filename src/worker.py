@@ -1,13 +1,13 @@
 """FastHTML on Cloudflare Workers — Todo app with HTMX + fastlite.
 
-This is the reference implementation for running FastHTML on Cloudflare's
-edge network via Python Workers (Pyodide/WebAssembly).
+Reference implementation for running FastHTML on Cloudflare's edge network
+via Python Workers (Pyodide/WebAssembly).
 
-Four Workers-specific constraints and their fixes:
+Workers-specific rules:
   1. All route handlers must be `async def` (no threadpool in Workers)
   2. Exception handlers must be `async def`
-  3. Session middleware disabled (sess_cls=None) — use Workers KV/D1 instead
-  4. App created lazily at first request (avoids snapshot issues)
+  3. Session middleware disabled (sess_cls=None)
+  4. App created lazily at first request (snapshot compat)
 """
 from workers import WorkerEntrypoint, Response
 from starlette.responses import HTMLResponse
@@ -20,7 +20,6 @@ def get_app():
     global _app
     if _app is not None: return _app
 
-    from fasthtml.core import FastHTML
     from fasthtml.common import *
     from fastlite import database
     from dataclasses import dataclass
@@ -42,7 +41,7 @@ def get_app():
     todos.insert(Todo(title='Add HTMX interactions', done=True))
     todos.insert(Todo(title='Wire up D1 for persistence'))
 
-    # -- Helpers (Jeremy Howard style: small functions, FT returns) ------------
+    # -- Helpers (small functions, FT returns) ---------------------------------
     def tid(id): return f'todo-{id}'
 
     def mk_todo(t):
@@ -67,9 +66,6 @@ def get_app():
             cls='todo-form',
         )
 
-    def mk_page(content):
-        return Title('FastHTML + Workers'), Style(CSS), content
-
     CSS = """
     body { font-family: system-ui; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
     h1 { font-size: 1.5rem; }
@@ -91,33 +87,31 @@ def get_app():
     async def _not_found(req, exc):
         return HTMLResponse('404 Not Found', status_code=404)
 
-    # -- App ------------------------------------------------------------------
-    _app = FastHTML(
+    # -- App (fast_app works with the right params!) --------------------------
+    _app, rt = fast_app(
         secret_key='change-me-in-production',
-        sess_cls=None,        # no session middleware (Workers compat)
-        live=False,            # no live reload
+        sess_cls=None,
+        live=False,
         exception_handlers={404: _not_found},
+        hdrs=[Style(CSS)],
+        db=False,
     )
-    rt = _app.route
 
     # -- Routes (all async — Workers has no threadpool) -----------------------
     @rt('/')
     async def home():
         items = [mk_todo(t) for t in todos()]
-        return mk_page(
+        return Titled('FastHTML on Cloudflare Workers',
+            mk_input(),
+            Ul(*items, id='todo-list'),
             Div(
-                H1('FastHTML on Cloudflare Workers'),
-                mk_input(),
-                Ul(*items, id='todo-list'),
-                Div(
-                    P('Stack: ', Code('python-fasthtml'), ' + ', Code('fastlite'),
-                      ' + ', Code('apsw (Wasm)'), ' + ', Code('HTMX')),
-                    P('Runtime: Pyodide on Cloudflare Workers edge network'),
-                    A('About', href='/about'), ' · ',
-                    A('API', href='/api'),
-                    cls='meta',
-                ),
-            )
+                P('Stack: ', Code('python-fasthtml'), ' + ', Code('fastlite'),
+                  ' + ', Code('apsw (Wasm)'), ' + ', Code('HTMX')),
+                P('Runtime: Pyodide on Cloudflare Workers edge network'),
+                A('About', href='/about'), ' · ',
+                A('API', href='/api'),
+                cls='meta',
+            ),
         )
 
     @rt('/todo', methods=['post'])
@@ -139,20 +133,16 @@ def get_app():
 
     @rt('/about')
     async def about():
-        return mk_page(
-            Div(
-                H1('About'),
-                P('Full FastHTML running on Cloudflare Workers via Pyodide (WebAssembly).'),
-                P('This template demonstrates:'),
-                Ul(
-                    Li('FastHTML native routing + FT rendering pipeline'),
-                    Li('fastlite / MiniDataAPI spec with apsw SQLite (compiled to Wasm)'),
-                    Li('HTMX interactions (add, toggle, delete — no page reloads)'),
-                    Li('Lazy app initialization for Workers snapshot compatibility'),
-                ),
-                A('← Home', href='/'),
-                cls='meta',
-            )
+        return Titled('About',
+            P('Full FastHTML running on Cloudflare Workers via Pyodide (WebAssembly).'),
+            P('This template demonstrates:'),
+            Ul(
+                Li('fast_app() with Workers-compatible params'),
+                Li('FastHTML native routing + FT rendering pipeline'),
+                Li('fastlite / MiniDataAPI spec with apsw SQLite (compiled to Wasm)'),
+                Li('HTMX interactions (add, toggle, delete — no page reloads)'),
+            ),
+            A('← Home', href='/'),
         )
 
     @rt('/api')
