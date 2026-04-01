@@ -1,132 +1,88 @@
-# FastHTML on Cloudflare Workers
+# FastHTML + Python DORM on Cloudflare Workers
 
-Run [FastHTML](https://fastht.ml) on Cloudflare's edge network via Python Workers (Pyodide/WebAssembly).
+Full-stack FastHTML with per-tenant Durable Object SQLite — the Jeremy Howard stack running on Cloudflare's edge.
 
-Full stack: **fast_app()** + **FT components** + **HTMX** + **fastlite/MiniDataAPI** + **apsw SQLite (Wasm)**.
+## What this is
 
-## Quickstart
+Each tenant (user, client, sub-account) gets their own **Durable Object** with a private **10GB SQLite database**. Your FastHTML Worker routes requests to the right DO. Data is persistent, consistent, and isolated — no R2 serialize/deserialize, no last-write-wins.
 
-```bash
-# Prerequisites: uv, node
-uv sync
-uv run pywrangler sync
-uv run pywrangler dev      # local dev
-uv run pywrangler deploy   # deploy to Cloudflare edge (330+ locations)
+**pydorm** is a MiniDataAPI-compatible wrapper for Durable Object SQLite. Same interface as fastlite:
+
+```python
+from pydorm import DormDB
+from dataclasses import dataclass
+
+@dataclass
+class Todo:
+    id:    int = None
+    title: str = ''
+    done:  bool = False
+
+db = DormDB(ctx.storage.sql)
+todos = db.create(Todo, pk='id')
+
+todos.insert(Todo(title='Buy milk'))
+todos[1]                            # → Todo(id=1, ...)
+todos()                             # → [Todo(...), ...]
+todos.update(Todo(id=1, done=True))
+todos.delete(1)
 ```
-
-## What works
-
-- `fast_app()` with Workers-compatible params
-- FastHTML native routing (`@rt('/')`) and FT rendering pipeline
-- FT components (`Titled`, `P`, `Ul`, `Li`, etc.) with full page shell
-- HTMX auto-loaded by FastHTML (interactive add/toggle/delete)
-- fastlite + MiniDataAPI spec with apsw SQLite compiled to Wasm
-- JSON API responses via FastHTML's `_resp` Mapping detection
-
-## What needed fixing
-
-Six Workers-specific constraints:
-
-| # | Blocker | Root cause | Fix |
-|---|---------|-----------|-----|
-| 1 | `httptools` C extension | No Wasm wheel for Pyodide | `[tool.uv] override-dependencies = ["uvicorn>=0.30"]` — strips `[standard]`, uvicorn falls back to `h11` |
-| 2 | Snapshot serialization | Vendored packages create JS refs | `python_dedicated_snapshot` compatibility flag in wrangler config |
-| 3 | `os.urandom()` at startup | Entropy blocked outside request context | Pass `secret_key="..."` explicitly |
-| 4 | Session middleware | `SessionMiddleware` incompatible with Workers ASGI | `sess_cls=None` |
-| 5 | Sync 404 handler | Workers ASGI requires async exception handlers | Pass `exception_handlers={404: async_handler}` |
-| 6 | Sync route handlers | `run_in_threadpool()` — Workers is single-threaded | **All handlers must be `async def`** |
 
 ## Architecture
 
 ```
-Request → Cloudflare Edge (330+ locations)
-        → Python Worker (Pyodide/WebAssembly isolate)
-        → asgi.fetch() → FastHTML ASGI app
-        → FT components → HTML response
-        → fastlite/apsw → SQLite (in-memory, Wasm)
+Browser → FastHTML Worker (edge, any location, stateless)
+        → Durable Object "tenant:acme" (single location, owns SQLite)
+        → pydorm (MiniDataAPI) → ctx.storage.sql (10GB, persistent, consistent)
+
+/acme    → DO "tenant:acme"    → acme's private SQLite
+/berens  → DO "tenant:berens"  → berens' private SQLite
+/client-47 → DO "tenant:client-47" → client-47's private SQLite
 ```
 
-## Key patterns
+## Quickstart
 
-### fast_app() works — with the right params
-
-```python
-async def _not_found(req, exc):
-    return HTMLResponse('404', status_code=404)
-
-app, rt = fast_app(
-    secret_key='...',
-    sess_cls=None,
-    live=False,
-    exception_handlers={404: _not_found},
-    db=False,
-)
+```bash
+uv sync
+uv run pywrangler sync
+uv run pywrangler dev      # local dev
+uv run pywrangler deploy   # deploy globally
 ```
 
-### All handlers must be async
+## Project structure
 
-```python
-# ✅ Works
-@rt('/')
-async def home(): return Titled('Hello', P('World'))
-
-# ❌ Crashes (run_in_threadpool fails)
-@rt('/')
-def home(): return Titled('Hello', P('World'))
+```
+src/
+├── worker.py     # FastHTML Worker + TenantDB Durable Object
+└── pydorm.py     # MiniDataAPI for DO SQLite (drop-in fastlite replacement)
 ```
 
-### Workers entrypoint with lazy init
+## Workers-specific rules
 
-```python
-_app = None
-def get_app():
-    global _app
-    if _app is not None: return _app
-    # ... create app ...
-    return _app
+All handlers must be `async def`. Exception handlers must be `async def`. No session middleware (`sess_cls=None`). Use `fast_app()` with the right params.
 
-class Default(WorkerEntrypoint):
-    async def fetch(self, request):
-        import asgi
-        return await asgi.fetch(get_app(), request.js_object, self.env)
-```
+## What needed fixing (from the original FastHTML-on-Workers discovery)
 
-## Limitations
+| Fix | Why |
+|-----|-----|
+| `override-dependencies = ["uvicorn>=0.30"]` | Strip httptools C extension |
+| `python_dedicated_snapshot` compat flag | Snapshot serialization |
+| `secret_key="..."` explicit | No os.urandom at startup |
+| `sess_cls=None` | Session middleware incompatible |
+| `async def` everything | Workers has no threadpool |
+| `async def _not_found` | Workers ASGI needs async exception handlers |
 
-- **No session middleware** — use Workers KV, D1, or signed cookies
-- **In-memory SQLite resets on cold start** — use Cloudflare D1 for persistence
-- **No file system writes** — Workers is read-only outside R2/KV/D1
-- **Cold start ~2-3s** on first request (Pyodide importing FastHTML + deps)
-- **Subsequent requests fast** while isolate is alive (singleton + Workers sharding)
+## pydorm vs fastlite
+
+| | fastlite | pydorm |
+|---|---------|--------|
+| Backend | apsw (local SQLite) | ctx.storage.sql (DO SQLite) |
+| Persistence | File on disk or memory | Durable, survives restarts |
+| Max size | Disk space | 10GB per DO |
+| Multi-tenant | One DB | Unlimited DOs, one per tenant |
+| Interface | MiniDataAPI | MiniDataAPI (same) |
+| PITR | No | 30-day point-in-time recovery built in |
 
 ## Credits
 
-Discovered and tested March 2026. Uses [FastHTML](https://fastht.ml) by Jeremy Howard / Answer.AI, [Cloudflare Python Workers](https://developers.cloudflare.com/workers/languages/python/), [fastlite](https://github.com/AnswerDotAI/fastlite), and [apsw](https://github.com/rogerbinns/apsw) compiled to Wasm.
-
-## R2-backed SQLite persistence
-
-The template includes optional R2 persistence. The lifecycle:
-
-```
-Cold start  → R2 GET db.sqlite → deserialize into memory
-Requests    → fastlite reads/writes against in-memory SQLite (fast)
-On write    → serialize → R2 PUT db.sqlite (durable)
-```
-
-The key APIs from apsw:
-```python
-db_bytes = db.conn.serialize('main')   # SQLite → bytes
-db.conn.deserialize('main', db_bytes)  # bytes → SQLite
-```
-
-To enable, add an R2 bucket binding to `wrangler.jsonc`:
-```json
-"r2_buckets": [{ "binding": "DB_BUCKET", "bucket_name": "fasthtml-db" }]
-```
-
-Create the bucket: `npx wrangler r2 bucket create fasthtml-db`
-
-**Caveats:**
-- Last-write-wins if multiple isolates write simultaneously (fine for single-user, needs locking for multi-user)
-- Serializes entire DB on every write — fine for small DBs (<1MB), consider D1 for larger datasets
-- For high-write workloads, batch writes and serialize less frequently
+FastHTML by Jeremy Howard / Answer.AI. Cloudflare Python Workers + Durable Objects. Discovered March 2026.
