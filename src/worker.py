@@ -1,63 +1,37 @@
-"""FastHTML on Cloudflare Workers with R2-backed SQLite persistence.
+"""FastHTML + DORM: Multi-tenant todo app on Cloudflare Workers.
 
-Lifecycle:
-  1. Cold start → GET db.sqlite from R2 → deserialize into memory
-  2. Requests   → fastlite read/write against in-memory SQLite (fast)
-  3. On write   → serialize → PUT back to R2 (durable)
-
-Workers-specific rules:
-  - All route handlers must be `async def`
-  - Exception handlers must be `async def`
-  - sess_cls=None (no session middleware)
-  - Lazy app init (snapshot compat)
+Each tenant gets their own Durable Object with private 10GB SQLite.
+No serialize/deserialize. No R2. No last-write-wins.
+The database just lives there, always consistent.
 """
 from workers import WorkerEntrypoint, Response
 from starlette.responses import HTMLResponse
+from dataclasses import dataclass
 import traceback
 
+# -- Data models (shared between Worker and DO) ------
+@dataclass
+class Todo:
+    id:    int = None
+    title: str = ''
+    done:  bool = False
+
+
+# -- The Durable Object (one per tenant) -------------
+from dorm import DORM
+
+class Tenant(DORM):
+    tables = [Todo]
+
+
+# -- FastHTML app (the front desk) --------------------
 _app = None
-_env = None  # Workers env for R2 binding access
 
-# -- R2-backed SQLite ---------------------------------------------------------
-async def load_db_from_r2(env):
-    "Pull serialized SQLite bytes from R2, deserialize into fastlite database."
-    from fastlite import database
-    db = database(':memory:')
-    try:
-        obj = await env.DB_BUCKET.get('db.sqlite')
-        if obj:
-            buf = await obj.arrayBuffer()
-            # Convert JS ArrayBuffer to Python bytes
-            from js import Uint8Array
-            arr = Uint8Array.new(buf)
-            db_bytes = bytes(arr)
-            if len(db_bytes) > 0:
-                db.conn.deserialize('main', db_bytes)
-    except Exception as e:
-        print(f'R2 load skipped: {e}')  # first run, no db yet
-    return db
-
-
-async def save_db_to_r2(db, env):
-    "Serialize in-memory SQLite and PUT to R2."
-    try:
-        db_bytes = db.conn.serialize('main')
-        from js import Uint8Array
-        arr = Uint8Array.new(len(db_bytes))
-        for i, b in enumerate(db_bytes):
-            arr[i] = b
-        await env.DB_BUCKET.put('db.sqlite', arr)
-    except Exception as e:
-        print(f'R2 save failed: {e}')
-
-
-# -- App factory --------------------------------------------------------------
 def get_app():
     global _app
     if _app is not None: return _app
 
     from fasthtml.common import *
-    from dataclasses import dataclass
 
     CSS = """
     body { font-family: system-ui; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
@@ -87,91 +61,83 @@ def get_app():
         db=False,
     )
 
-    @dataclass
-    class Todo:
-        id:    int = None
-        title: str = ''
-        done:  bool = False
-
-    # -- DB holder (loaded from R2 on first request per isolate) -----
-    _state = {}
-
-    async def get_db():
-        if 'db' not in _state:
-            _state['db'] = await load_db_from_r2(_env)
-            db = _state['db']
-            # Ensure table exists (first run or empty DB)
-            db.create(Todo, pk='id', if_not_exists=True)
-        return _state['db']
-
-    async def get_todos():
-        db = await get_db()
-        return db.t.todo
-
-    # -- Helpers ---
     def tid(id): return f'todo-{id}'
 
-    def mk_todo(t):
-        done_cls = 'done' if t.done else ''
+    def mk_todo(t, tenant):
+        done_cls = 'done' if t['done'] else ''
         return Li(
-            A('✓', hx_put=f'/toggle/{t.id}', hx_target=f'#{tid(t.id)}',
-              hx_swap='outerHTML', cls=f'toggle {done_cls}', href='#'),
-            Span(t.title, cls=done_cls),
-            A('✕', hx_delete=f'/todo/{t.id}', hx_target=f'#{tid(t.id)}',
-              hx_swap='outerHTML', cls='delete', href='#'),
-            id=tid(t.id),
+            A('✓', hx_put=f'/{tenant}/toggle/{t["id"]}',
+              hx_target=f'#{tid(t["id"])}', hx_swap='outerHTML',
+              cls=f'toggle {done_cls}', href='#'),
+            Span(t['title'], cls=done_cls),
+            A('✕', hx_delete=f'/{tenant}/todo/{t["id"]}',
+              hx_target=f'#{tid(t["id"])}', hx_swap='outerHTML',
+              cls='delete', href='#'),
+            id=tid(t['id']),
         )
 
-    def mk_input():
+    def mk_input(tenant):
         return Form(
-            Input(name='title', placeholder='What needs doing?', autofocus=True,
-                  cls='todo-input'),
+            Input(name='title', placeholder='What needs doing?',
+                  autofocus=True, cls='todo-input'),
             Button('Add', type='submit'),
-            hx_post='/todo', hx_target='#todo-list', hx_swap='beforeend',
-            hx_on__after_request="this.reset()", cls='todo-form',
+            hx_post=f'/{tenant}/todo', hx_target='#todo-list',
+            hx_swap='beforeend', hx_on__after_request="this.reset()",
+            cls='todo-form',
         )
 
-    # -- Routes (all async) -------------------------------------------
-    @rt('/')
-    async def home():
-        todos = await get_todos()
-        items = [mk_todo(t) for t in todos()]
-        return Titled('FastHTML + R2 SQLite',
-            mk_input(),
-            Ul(*items, id='todo-list'),
-            Div(P('SQLite persisted to R2 — survives cold starts.'), cls='meta'),
+    def get_stub(env, tenant):
+        "Get the Durable Object stub for a tenant."
+        do_id = env.TENANTS.idFromName(tenant)
+        return env.TENANTS.get(do_id)
+
+    @rt('/{tenant}')
+    async def home(req, tenant: str):
+        stub = get_stub(req.scope['env'], tenant)
+        todos = await stub.table_list('todo')
+        return Titled(f'Todos — {tenant}',
+            mk_input(tenant),
+            Ul(*[mk_todo(t, tenant) for t in todos], id='todo-list'),
+            Div(
+                P(Code(f'Tenant: {tenant}'), ' — private SQLite in Durable Object'),
+                P('Each tenant URL gets its own 10GB database.'),
+                cls='meta',
+            ),
         )
 
-    @rt('/todo', methods=['post'])
-    async def add_todo(title: str):
+    @rt('/{tenant}/todo', methods=['post'])
+    async def add_todo(req, tenant: str, title: str):
         if not title.strip(): return ''
-        todos = await get_todos()
-        t = todos.insert(Todo(title=title.strip()))
-        db = await get_db()
-        await save_db_to_r2(db, _env)
-        return mk_todo(t)
+        stub = get_stub(req.scope['env'], tenant)
+        t = await stub.table_insert('todo', {'title': title.strip()})
+        return mk_todo(t, tenant)
 
-    @rt('/toggle/{id}', methods=['put'])
-    async def toggle(id: int):
-        todos = await get_todos()
-        t = todos[id]
-        todos.update(Todo(id=id, title=t.title, done=not t.done))
-        db = await get_db()
-        await save_db_to_r2(db, _env)
-        return mk_todo(todos[id])
+    @rt('/{tenant}/toggle/{id}', methods=['put'])
+    async def toggle(req, tenant: str, id: int):
+        stub = get_stub(req.scope['env'], tenant)
+        t = await stub.table_get('todo', id)
+        t['done'] = not t['done']
+        t = await stub.table_update('todo', t)
+        return mk_todo(t, tenant)
 
-    @rt('/todo/{id}', methods=['delete'])
-    async def delete(id: int):
-        todos = await get_todos()
-        todos.delete(id)
-        db = await get_db()
-        await save_db_to_r2(db, _env)
+    @rt('/{tenant}/todo/{id}', methods=['delete'])
+    async def delete(req, tenant: str, id: int):
+        stub = get_stub(req.scope['env'], tenant)
+        await stub.table_delete('todo', id)
         return ''
 
-    @rt('/api')
-    async def api():
-        todos = await get_todos()
-        return {'status': 'ok', 'todos': len(todos()), 'persistence': 'r2'}
+    @rt('/')
+    async def index():
+        return Titled('DORM — Python Multi-Tenant',
+            P('Each URL path is a tenant with its own private SQLite:'),
+            Ul(
+                Li(A('/acme', href='/acme'), ' — Acme Corp todos'),
+                Li(A('/berens', href='/berens'), ' — Berens todos'),
+                Li(A('/kinai', href='/kinai'), ' — KinAI todos'),
+            ),
+            P('Create any tenant by visiting ', Code('/{name}'),
+              '. Each gets a separate Durable Object with 10GB SQLite.'),
+        )
 
     return _app
 
@@ -179,10 +145,18 @@ def get_app():
 # -- Workers entrypoint -------------------------------------------------------
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
-        global _env
-        _env = self.env  # capture env for R2 binding access
         try:
             import asgi
-            return await asgi.fetch(get_app(), request.js_object, self.env)
+            # Inject env into ASGI scope so routes can access DO bindings
+            app = get_app()
+            scope_env = self.env
+            original_call = app.__call__
+
+            async def patched_call(scope, receive, send):
+                scope['env'] = scope_env
+                return await original_call(scope, receive, send)
+
+            app.__call__ = patched_call
+            return await asgi.fetch(app, request.js_object, self.env)
         except BaseException as e:
             return Response(f'{type(e).__name__}: {e}\n{traceback.format_exc()}', status=500)

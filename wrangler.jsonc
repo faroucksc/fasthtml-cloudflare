@@ -7,13 +7,19 @@
 		"python_workers",
 		"python_dedicated_snapshot"
 	],
-	"observability": {
-		"enabled": true
+	"observability": { "enabled": true },
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "TENANTS",
+				"class_name": "Tenant"
+			}
+		]
 	},
-	"r2_buckets": [
+	"migrations": [
 		{
-			"binding": "DB_BUCKET",
-			"bucket_name": "fasthtml-db"
+			"tag": "v1",
+			"new_sqlite_classes": ["Tenant"]
 		}
 	]
 }
