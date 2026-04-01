@@ -102,3 +102,31 @@ class Default(WorkerEntrypoint):
 ## Credits
 
 Discovered and tested March 2026. Uses [FastHTML](https://fastht.ml) by Jeremy Howard / Answer.AI, [Cloudflare Python Workers](https://developers.cloudflare.com/workers/languages/python/), [fastlite](https://github.com/AnswerDotAI/fastlite), and [apsw](https://github.com/rogerbinns/apsw) compiled to Wasm.
+
+## R2-backed SQLite persistence
+
+The template includes optional R2 persistence. The lifecycle:
+
+```
+Cold start  → R2 GET db.sqlite → deserialize into memory
+Requests    → fastlite reads/writes against in-memory SQLite (fast)
+On write    → serialize → R2 PUT db.sqlite (durable)
+```
+
+The key APIs from apsw:
+```python
+db_bytes = db.conn.serialize('main')   # SQLite → bytes
+db.conn.deserialize('main', db_bytes)  # bytes → SQLite
+```
+
+To enable, add an R2 bucket binding to `wrangler.jsonc`:
+```json
+"r2_buckets": [{ "binding": "DB_BUCKET", "bucket_name": "fasthtml-db" }]
+```
+
+Create the bucket: `npx wrangler r2 bucket create fasthtml-db`
+
+**Caveats:**
+- Last-write-wins if multiple isolates write simultaneously (fine for single-user, needs locking for multi-user)
+- Serializes entire DB on every write — fine for small DBs (<1MB), consider D1 for larger datasets
+- For high-write workloads, batch writes and serialize less frequently
